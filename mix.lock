@@ -1,0 +1,2 @@
+%{"benchfella": {:hex, :benchfella, "0.2.1", "5c8f427a11c09b7d33d6039cdb5eb942e12ab8d4151829fe1c3df6f6395ad813", [:mix], []},
+  "exmatrix": {:hex, :exmatrix, "0.0.1", "bd91870e87597c890af938e14db6292fc9c0c14870b03b966e7d5e8059c84229", [:mix], [{:benchfella, "~> 0.2.0", [hex: :benchfella, optional: false]}]}}
