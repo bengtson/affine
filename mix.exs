@@ -7,14 +7,30 @@ defmodule Affine.Mixfile do
      elixir: "~> 1.3",
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
-     deps: deps()]
+     description: "Affine Transform Library",
+     package: package,
+     deps: deps(),
+
+     # Docs
+     name: "affine",
+     source_url: "https://github.com/bengtson/affine",
+     docs: [main: "Affine", # The main page in the docs
+            extras: ["README.md"]]]
   end
 
   # Configuration for the OTP application
   #
   # Type "mix help compile.app" for more information
   def application do
-    [applications: [:logger]]
+    []
+  end
+
+  def package do
+    [
+      maintainers: ["Michael Bengtson"],
+      licenses: ["Apache 2 (see the file LICENSE for details)"],
+      links: %{"GitHub" => "https://github.com/bengtson/affine"}
+    ]
   end
 
   # Dependencies can be Hex packages:
@@ -28,7 +44,8 @@ defmodule Affine.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:exmatrix, "~> 0.0.1"}
+      {:matrix, "~> 0.3.2"},
+      {:ex_doc, "~> 0.14", only: :dev}
     ]
   end
 end
