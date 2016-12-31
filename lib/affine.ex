@@ -1,174 +1,121 @@
 defmodule Affine do
   @moduledoc """
-  This module performs Affine Transforms for 1, 2 and 3 dimensions. The
+  This library performs affine transforms for multiple dimensions. The
   implementation is simple in this initial version allowing for translation,
-  scaling and rotation.
+  scaling, shear and rotation.
 
-  An example of usage is:
+  This library uses the Matrix library available on Hex. It is automatically included when using this library as a dep in your application.
 
-      v = Affine.identity
-      |> Affine.translate([1, 2, 3])
-      |> Affine.scale([2, 2, 2])
-      |> Affine.rotate_z(90.0, :degrees)
-      |> Affine.transform([4, 5, 6])
+  ## Using The Affine Library
 
-  As the transform is built before being applied, the order of the operations
-  is reversed as is typical for an Affine Transform. In this case, the point
-  (4, 5, 6) is first rotated about the z axis, then scaled by 2 in each
-  direction followed by a translation of (1, 2, 3). The result will be the
-  point (-9.0, 10.0, 15.0).
+  The capabilities of the library can be accessed through either a low level api or a higher level one.
+
+  ### Low Level API
+
+  The transform library can be accessed at it's lowest level giving the best
+  performance and full control to the developer. An example of using the API at
+  this level is:
+
+      t_translate = Affine.Transforms.translate (3.0, 4.0, 5.0)
+      point = Affine.transform t_translate [ 1.0, 2.0, 3.0 ]
+      assert point == [4.0, 6.0, 8.0]
+
+  And to add a transform to the first one:
+
+      t_scale = Affine.Transforms.scale (2.0, 2.0, 2.0)
+      t_scale_then_translate = Affine.multiply t_translate, t_scale
+      point = Affine.transform t_scale_then_translate [ 1.0, 2.0, 3.0 ]
+      assert point == [ 5.0, 8.0, 11.0 ]
+
+  Keep in mind that the order individual transforms are provided to the multiply
+  function is important since transforms are not commutative. With the same
+  example as above but with t_translate and t_scale reversed, the resulting point is different:
+
+      t_translate_then_scale = Affine.multiply t_scale, t_translate
+      point = Affine.transform t_translate_then_scale [ 1.0, 2.0, 3.0 ]
+      assert point == [ 8.0, 12.0, 16.0 ]
+
+  The last transform, t_translate, in this case will be the first to be done. Of course,
+  the beauty of Affine transforms is that all multiplied transforms are done
+  simultaneously but logically, the last transform multiplied is the first to be
+  applied.
+
+  ### High Level API
+
+  The easier API for creating and using Affine transforms uses the flexibility
+  provided in Elixir to more elegantly define the transforms. This requires a bit more processing but generally would not be a burden to the application unless
+  many transforms are being created. Here's an example:
+
+      t_translate = Affine.create [ type: :translate, dimensions: 3, x: 3.0, y: 4.0, z: 5.0]
+      point = Affine.transform t_translate [ 1.0, 2.0, 3.0]
+      assert point == [4.0, 6.0, 8.0]
+
+  So the create function takes a parameter list and generates the correct
+  transform. The create function can also take a list of parameter lists and
+  generate a single transform from those parameter lists. For example, to create,
+  t_translate_then_scale with a single call to create, the following can be done:
+
+      point =
+        [ [type: :translate, dimensions: 3, x: 3.0, y: 4.0, z: 5.0],
+          [type: :scale, dimensions: 3, x: 2.0, y: 2.0, z: 2.0] ]
+        |> Affine.create
+        |> Affine.transform [1.0, 2.0, 3.0]
+      assert point == [ 8.0, 12.0, 16.0 ]
+
+  Note the order of transforms in the parameter list is applied such that the first transform in the parameter list is the last one applied to the final transform. Logically, it is the first one to be applied when using the final transform.
+
+  Of course, the above is only useful for a one time point transformation since
+  the generate transform is not saved. So the following is likely to be more
+  useful:
+
+      t_translate_then_scale =
+        [ [type: :translate, dimensions: 3, x: 3.0, y: 4.0, z: 5.0],
+          [type: :scale, dimensions: 3, x: 2.0, y: 2.0, z: 2.0] ]
+        |> Affine.create
+
+      point = t_translate_then_scale
+        |> Affine.transform [1.0, 2.0, 3.0]
+      assert point == [ 8.0, 12.0, 16.0 ]
+
+  ### Linear Maps
+
+  Generating 2D graphics, either for charting, design or other reasons, can require reassignment of a space on the drawing canvas for a part of the graphic.
+  For instance, creating the x-axis in a chart that goes for 0-21 for the data in the area from pixel 143 to pixel 200 on the drawing canvas can use a transform to easily convert from data space to canvas space.
+
+  A special type of 'create' parameter list can be used to generate the transform for the very example just stated. Here's how it looks:
+
+      t =
+        [type: :linear_map, x1_in: 0.0, x1_out: 143.0, x2_in: 21.0, x2_out: 200.0]
+        |> Affine.create
+
+  This code generates a 1D transform with translation and scaling such that a value of 0 in will generate 143 and a value of 21 in will generate a 200.
+
+      point = Affine.map (t, 0.0)
+      assert point == 143
+      point = Affine.map (t, 21.0)
+      assert point == 200
   """
 
   @type matrix :: [[number]]
   @type point :: [number]
+  @type list_of_specs :: [[]]
 
-  @doc """
+  @spec create(list_of_specs) :: matrix
+  defdelegate create(parameters), to: Affine.Generator, as: :create
 
-  """
-  def new do
-    []
-  end
+  @spec m(matrix,matrix) :: matrix
+  defdelegate m(matrix1,matrix2), to: Affine.Operations, as: :multiply
 
-  @doc """
-  Returns the identity matrix which can be used as the starting point in
-  building a transform.
-  """
-  @spec identity() :: matrix
-  def identity do
-    [
-      [ 1.0, 0.0, 0.0, 0.0 ],
-      [ 0.0, 1.0, 0.0, 0.0 ],
-      [ 0.0, 0.0, 1.0, 0.0 ],
-      [ 0.0, 0.0, 0.0, 1.0 ]
-    ]
-  end
+  @spec multiply(matrix,matrix) :: matrix
+  defdelegate multiply(matrix1,matrix2), to: Affine.Operations, as: :multiply
 
-  @doc """
-  Appends a specified translation to the supplied transform. One, two or
-  three variables may be provided. Variables not supplied default to 0.
-  """
-  @spec translate(matrix, point) :: matrix
-  def translate [x,y,z] do
-    translate Matrix.ident(4), [x,y,z]
-  end
-  def translate t, [x,y,z] do
-    op =
-    [
-      [ 1.0, 0.0, 0.0,   x ],
-      [ 0.0, 1.0, 0.0,   y ],
-      [ 0.0, 0.0, 1.0,   z ],
-      [ 0.0, 0.0, 0.0, 1.0 ]
-    ]
-#    ExMatrix.pmultiply t, op
-    Matrix.mult t, op
-  end
+  @spec t(matrix,point) :: point
+  defdelegate t(matrix,point), to: Affine.Operations, as: :transform
 
-  @doc """
-  Appends a specified scale to the transform. A scaling factor can be provided
-  for the x, y and z directions. Defaults if not provided are a scaling factor
-  of 1.0.
-  """
-  @spec scale(matrix, point) :: matrix
-  def scale [x,y,z] do
-    scale Matrix.ident(4), [x,y,z]
-  end
-  def scale t, [x, y, z] do
-    op =
-    [
-      [   x, 0.0, 0.0, 0.0 ],
-      [ 0.0,   y, 0.0, 0.0 ],
-      [ 0.0, 0.0,   z, 0.0 ],
-      [ 0.0, 0.0, 0.0, 1.0 ]
-    ]
-    Matrix.mult t, op
-#    ExMatrix.pmultiply t, op
-  end
-
-  @doc """
-  Appends a rotation around the x axis in the counter clockwise direction for
-  the specified angle. The angle defaults to :degrees but can optionally be
-  specified as :radians.
-  """
-  @spec rotate_x(matrix,number,:degrees | :radians) :: matrix
-  def rotate_x [x,y,z] do
-    rotate_x Matrix.ident(4), [x,y,z]
-  end
-  def rotate_x t, angle, units \\ :degrees do
-    { sin, cos } = sin_cos angle, units
-    op =
-    [
-      [ 1.0,  0.0,  0.0, 0.0 ],
-      [ 0.0,  cos, -sin, 0.0 ],
-      [ 0.0,  sin,  cos, 0.0 ],
-      [ 0.0,  0.0,  0.0, 1.0 ]
-    ]
-    Matrix.mult t, op
-  end
-
-  @doc """
-  Appends a rotation around the y axis in the counter clockwise direction for
-  the specified angle. The angle defaults to :degrees but can optionally be
-  specified as :radians.
-  """
-  @spec rotate_y(matrix,number,:degrees | :radians) :: matrix
-  def rotate_y [x,y,z] do
-    rotate_y Matrix.ident(4), [x,y,z]
-  end
-  def rotate_y t, angle, units \\ :degrees do
-    { sin, cos } = sin_cos angle, units
-    op =
-    [
-      [  cos,  0.0,  sin, 0.0 ],
-      [  0.0,  1.0,  0.0, 0.0 ],
-      [ -sin,  0.0,  cos, 0.0 ],
-      [  0.0,  0.0,  0.0, 1.0 ]
-    ]
-    Matrix.mult t, op
-  end
-
-  @doc """
-  Appends a rotation around the z axis in the counter clockwise direction for
-  the specified angle. The angle defaults to :degrees but can optionally be
-  specified as :radians.
-  """
-  @spec rotate_z(matrix,number,:degrees | :radians) :: matrix
-  def rotate_z angle, units do
-    rotate_z Matrix.ident(4), angle, units
-  end
-  def rotate_z t, angle, units do
-    { sin, cos } = sin_cos angle, units
-    op =
-    [
-      [ cos, -sin, 0.0, 0.0 ],
-      [ sin,  cos, 0.0, 0.0 ],
-      [ 0.0,  0.0, 1.0, 0.0 ],
-      [ 0.0,  0.0, 0.0, 1.0 ]
-    ]
-    Matrix.mult t, op
-  end
-
-  @doc """
-  Transforms the provided x,y,z point with the specified transform. Returns the
-  transformed point.
-  """
   @spec transform(matrix,point) :: point
-  def transform t, [x, y, z] do
+  defdelegate transform(matrix,point), to: Affine.Operations, as: :transform
 
-    r = Matrix.transpose [[x, y, z, 1]]
-    x = Matrix.mult(t,r)
-    [[x],[y],[z],[_]] = x
-    [x,y,z]
-  end
-
-  # Converts the angle based on units specified by user and returns
-  # the sin and cos for the angle. This is a helper function for the
-  # rotate transforms.
-  defp sin_cos angle, units do
-    a = case units do
-      :degrees -> angle / 180.0 * :math.pi()
-      _ -> angle
-    end
-    { :math.sin(a), :math.cos(a) }
-  end
+  @spec map(matrix,number) :: number
+  defdelegate map(matrix,value), to: Affine.LinearMap, as: :map
 
 end

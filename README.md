@@ -1,34 +1,99 @@
-# Affine Transform
+# Affine Transform Library
 
-This module performs Affine Transforms for 1, 2 and 3 dimensions. The
+This library performs affine transforms for multiple dimensions. The
 implementation is simple in this initial version allowing for translation,
-scaling and rotation.
+scaling, shear and rotation.
 
-An example of usage is:
+This library uses the Matrix library available on Hex. It is automatically included when using this library as a dep in your application.
 
-    t = Affine.identity
-    |> Affine.translate([1, 2, 3])
-    |> Affine.scale([2, 2, 2])
-    |> Affine.rotate_z(90.0, :degrees)
+## Using The Affine Library
 
-    point = Affine.transform(t, [4, 5, 6])
+The capabilities of the library can be accessed through either a low level api or a higher level one.
 
-As the transform is built before being applied, the order of the operations
-is reversed as is typical for an Affine Transform. In this case, the point
-(4, 5, 6) is first rotated about the z axis, then scaled by 2 in each
-direction followed by a translation of (1, 2, 3). The result will be the
-point (-9.0, 10.0, 15.0).
+### Low Level API
 
-The transform matrix is always 4x4 regardless whether it's used for 1, 2 or 3 dimensions.
+The transform library can be accessed at it's lowest level giving the best
+performance and full control to the developer. An example of using the API at
+this level is:
 
-The following shows how a one-dimensional transform can be used. In this case, only a translate and scale can be applied.
+    t_translate = Affine.Transforms.translate (3.0, 4.0, 5.0)
+    point = Affine.transform t_translate [ 1.0, 2.0, 3.0 ]
+    assert point == [4.0, 6.0, 8.0]
 
-    t = Affine.identity
-    |> Affine.translate([1.0,0,0])
-    |> Affine.scale([2.0,0,0])
+And to add a transform to the first one:
 
-    point_in = [5,0,0]
-    point_out = Affine.transform(t,p)
+    t_scale = Affine.Transforms.scale (2.0, 2.0, 2.0)
+    t_scale_then_translate = Affine.multiply t_translate, t_scale
+    point = Affine.transform t_scale_then_translate [ 1.0, 2.0, 3.0 ]
+    assert point == [ 5.0, 8.0, 11.0 ]
+
+Keep in mind that the order individual transforms are provided to the multiply
+function is important since transforms are not commutative. With the same
+example as above but with t_translate and t_scale reversed, the resulting point is different:
+
+    t_translate_then_scale = Affine.multiply t_scale, t_translate
+    point = Affine.transform t_translate_then_scale [ 1.0, 2.0, 3.0 ]
+    assert point == [ 8.0, 12.0, 16.0 ]
+
+The last transform, t_translate, in this case will be the first to be done. Of course,
+the beauty of Affine transforms is that all multiplied transforms are done
+simultaneously but logically, the last transform multiplied is the first to be
+applied.
+
+### High Level API
+
+The easier API for creating and using Affine transforms uses the flexibility
+provided in Elixir to more elegantly define the transforms. This requires a bit more processing but generally would not be a burden to the application unless
+many transforms are being created. Here's an example:
+
+    t_translate = Affine.create [ type: :translate, dimensions: 3, x: 3.0, y: 4.0, z: 5.0]
+    point = Affine.transform t_translate [ 1.0, 2.0, 3.0]
+    assert point == [4.0, 6.0, 8.0]
+
+So the create function takes a parameter list and generates the correct
+transform. The create function can also take a list of parameter lists and
+generate a single transform from those parameter lists. For example, to create,
+t_translate_then_scale with a single call to create, the following can be done:
+
+    point =
+      [ [type: :translate, dimensions: 3, x: 3.0, y: 4.0, z: 5.0],
+        [type: :scale, dimensions: 3, x: 2.0, y: 2.0, z: 2.0] ]
+      |> Affine.create
+      |> Affine.transform [1.0, 2.0, 3.0]
+    assert point == [ 8.0, 12.0, 16.0 ]
+
+Note the order of transforms in the parameter list is applied such that the first transform in the parameter list is the last one applied to the final transform. Logically, it is the first one to be applied when using the final transform.
+
+Of course, the above is only useful for a one time point transformation since
+the generate transform is not saved. So the following is likely to be more
+useful:
+
+    t_translate_then_scale =
+      [ [type: :translate, dimensions: 3, x: 3.0, y: 4.0, z: 5.0],
+        [type: :scale, dimensions: 3, x: 2.0, y: 2.0, z: 2.0] ]
+      |> Affine.create
+
+    point = t_translate_then_scale
+      |> Affine.transform [1.0, 2.0, 3.0]
+    assert point == [ 8.0, 12.0, 16.0 ]
+
+### Linear Maps
+
+Generating 2D graphics, either for charting, design or other reasons, can require reassignment of a space on the drawing canvas for a part of the graphic.
+For instance, creating the x-axis in a chart that goes for 0-21 for the data in the area from pixel 143 to pixel 200 on the drawing canvas can use a transform to easily convert from data space to canvas space.
+
+A special type of 'create' parameter list can be used to generate the transform for the very example just stated. Here's how it looks:
+
+    t =
+      [type: :linear_map, x1_in: 0.0, x1_out: 143.0, x2_in: 21.0, x2_out: 200.0]
+      |> Affine.create
+
+This code generates a 1D transform with translation and scaling such that a value of 0 in will generate 143 and a value of 21 in will generate a 200.
+
+    point = Affine.map (t, 0.0)
+    assert point == 143
+    point = Affine.map (t, 21.0)
+    assert point == 200
 
 ## Installation
 
@@ -44,22 +109,10 @@ If [available in Hex](https://hex.pm/docs/publish), the package can be installed
 
 ## Road Map
 
-Allow for the generation of a transform that does not have the 'reverse' order
-effect. It would be created as follows:
+No other development planned at this time for the Affine library.
 
-    transform =
-      |> Affine.Generator.build(3)
-      |> Affine.Generator.append(translate([1.0,0,0]))
-      |> Affine.Generator.append(scale([2.0,2.0,2.0]))
-      |> Affine.Generator.append(rotate_z(45.0))
-      |> Affine.Generator.generate
+## Coding state
 
-The build function takes takes a diminsions parameter. This can be from 1-3. It
-returns a state that tracks all the requested transforms but does not multiply
-them until requested by the generate call. The final transform for the code
-above will sequentially apply the translate, the scale and the rotate in that order. It will not be reversed.
-
-### Coding state
-
-Clean up Affine.transform. Likely could use a transpose instead of the structuring and destructuring.
-Allow for matrices of any size from 1-3 dimensions sizes 2-4.
+- Review all documentation.
+- Review all testing coverage.
+- Publish.
